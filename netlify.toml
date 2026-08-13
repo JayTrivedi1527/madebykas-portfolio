@@ -2,14 +2,19 @@
 [build]
   publish = "."
 
-# The bundle unpacks its own assets in the browser, so every path should
-# fall through to index.html rather than 404.
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# No SPA fallback here on purpose. Routing is hash-based (#/about,
+# #/project/arc-lamp), so the fragment never reaches the server and every real
+# URL is already a file on disk. A catch-all would make /favicon.ico,
+# /robots.txt and every typo return the full 5.8 MB page with a 200, which
+# search engines read as a soft 404.
 
 [[headers]]
   for = "/index.html"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+# Fingerprinted by content, so these can be cached hard.
+[[headers]]
+  for = "/og-image.jpg"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"

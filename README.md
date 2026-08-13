@@ -19,17 +19,24 @@ Then visit http://localhost:8000
 
 ## Updating the site
 
-The export navigates by internal state, so the browser's Back button would leave
-the site entirely. `scripts/patch-history.py` fixes that by giving each view its
-own history entry, which also makes sections and projects deep-linkable
-(`#/about`, `#/products`, `#/project/arc-lamp`).
+`scripts/patch-export.py` fixes four things the design tool can't emit, and
+none of them are in Kasvi's source — so **every new export must be run through
+it**:
 
-That patch is **not** in Kasvi's source, so every new export has to be run
-through it:
+- **History** — Back used to leave the site entirely. Each view now gets a
+  history entry, which also makes pages deep-linkable (`#/about`, `#/products`,
+  `#/project/arc-lamp`).
+- **Metadata** — adds the title, description, favicon and Open Graph tags the
+  export omits, so tabs are named and shared links preview properly.
+- **Links** — repoints the social links at the real profiles and the footer
+  email at an address that can actually receive mail.
+- **Nav** — strips the stray `&nbsp;` from the Archive label.
+
+Run it on each new export:
 
 ```bash
 cp ~/Downloads/NEW.html src-export.html
-python3 scripts/patch-history.py src-export.html index.html
+python3 scripts/patch-export.py src-export.html index.html
 git commit -am "Update site" && git push
 ```
 
@@ -39,4 +46,4 @@ re-derived. `index.html` is the patched file that actually ships. Pushing to
 
 If a future export renames its navigation methods, the script exits with an
 error rather than shipping an unpatched page — update the replacements in
-`scripts/patch-history.py` when that happens.
+`scripts/patch-export.py` when that happens.
