@@ -1,0 +1,15 @@
+# Static site, no build step — index.html is served straight from the repo root.
+[build]
+  publish = "."
+
+# The bundle unpacks its own assets in the browser, so every path should
+# fall through to index.html rather than 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
