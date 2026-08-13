@@ -19,4 +19,24 @@ Then visit http://localhost:8000
 
 ## Updating the site
 
-Replace `index.html` with the newly exported bundle and push. That's the whole deploy.
+The export navigates by internal state, so the browser's Back button would leave
+the site entirely. `scripts/patch-history.py` fixes that by giving each view its
+own history entry, which also makes sections and projects deep-linkable
+(`#/about`, `#/products`, `#/project/arc-lamp`).
+
+That patch is **not** in Kasvi's source, so every new export has to be run
+through it:
+
+```bash
+cp ~/Downloads/NEW.html src-export.html
+python3 scripts/patch-history.py src-export.html index.html
+git commit -am "Update site" && git push
+```
+
+`src-export.html` is the unmodified export, kept so the patch can always be
+re-derived. `index.html` is the patched file that actually ships. Pushing to
+`main` deploys automatically.
+
+If a future export renames its navigation methods, the script exits with an
+error rather than shipping an unpatched page — update the replacements in
+`scripts/patch-history.py` when that happens.
