@@ -118,6 +118,14 @@ TEMPLATE_EDITS = [
     ("html lang", "<html><head>", '<html lang="en"><head>', 1),
     ("stray nbsp in Archive nav label", ">&nbsp;Archive<", ">Archive<", 1),
     (
+        # The home-grid card has the real name hardcoded in the markup, but the
+        # detail page reads this array — so the page headed itself "Project Title".
+        "unfilled project title (Box Bites Cafe)",
+        "{ id: 'paper-trail', title: 'Project Title'",
+        "{ id: 'paper-trail', title: 'Box Bites Café'",
+        1,
+    ),
+    (
         "footer email (domain has no mail server)",
         "mailto:hello@madebykas.com",
         "mailto:kasshirawat@gmail.com",
