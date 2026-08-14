@@ -14,6 +14,12 @@ they're re-applied here on every export:
             than her profiles, and the footer email was an address the domain
             can't receive mail on.
   nav       the Archive nav label carried a stray leading &nbsp;.
+  mobile    the export is desktop-only: the nav wrapped into crowded rows and
+            the hero wasted most of the first screen. Adds a mobile stylesheet.
+  wordmark  "made by kas" appeared twice on the home page (nav + hero), so the
+            nav copy now fades in only once the hero has scrolled away.
+  copy      a hard <br> in the hero orphaned "to last." onto its own line, and
+            two project titles disagreed with their cards.
 
 Usage:
 
@@ -46,6 +52,73 @@ FAVICON = (
     "font-size='38' fill='%231A1817' text-anchor='middle'%3Ek%3C/text%3E%3C/svg%3E"
 )
 
+# Everything in the export is inline-styled with no classes, so these rules
+# target structure (and lean on !important to beat the inline styles).
+SITE_CSS = """<style>
+/* Wordmark reveal: at the top of the home page the hero already says
+   "made by kas", so the nav repeats it. Hide the nav copy until the hero has
+   scrolled away — on About/project pages there is no hero, so it stays put. */
+nav > div > a:first-child {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity .4s ease, transform .4s ease;
+}
+html.mbk-scrolled nav > div > a:first-child {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  nav > div > a:first-child { transition: none; }
+}
+
+@media (max-width: 760px) {
+  /* The nav wrapped onto two crowded rows and ate a third of the screen.
+     Five links can't share one row at this width, so centre them and let the
+     wrap read as two deliberate rows rather than a stranded Contact pill. */
+  nav > div { padding: 10px 20px !important; gap: 8px !important; }
+  nav > div > div {
+    gap: 16px !important;
+    row-gap: 8px !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+  nav > div > div > a { font-size: 14px !important; }
+  nav > div > div > a:last-child { padding: 7px 16px !important; }
+  nav > div > a:first-child { font-size: 16px !important; }
+
+  /* Hero: less dead space above the fold, larger headline relative to screen. */
+  header[data-screen-label="Home hero"] {
+    padding-top: 64px !important;
+    padding-bottom: 52px !important;
+  }
+  header[data-screen-label="Home hero"] h1 { font-size: 15vw !important; }
+  header[data-screen-label="Home hero"] p {
+    font-size: 17px !important;
+    max-width: 100% !important;
+    margin-top: 22px !important;
+  }
+
+  /* Section headings and their number labels. */
+  section h2 { font-size: 30px !important; }
+
+  /* Desktop section padding leaves a dead void between blocks on a phone. */
+  section { padding-top: 44px !important; padding-bottom: 44px !important; }
+
+  /* Nothing should ever scroll sideways on a phone. */
+  html, body { overflow-x: hidden !important; }
+  img, svg, video { max-width: 100% !important; }
+}
+
+@media (max-width: 420px) {
+  /* Below this the five nav links can't share a row legibly; let them wrap
+     but keep them tight rather than sprawling. */
+  nav > div > div { gap: 12px !important; }
+  nav > div > div > a { font-size: 13px !important; }
+}
+</style>"""
+
 META_TAGS = """<title>{title}</title>
 <meta name="description" content="{desc}">
 <link rel="icon" href="{icon}">
@@ -63,6 +136,9 @@ META_TAGS = """<title>{title}</title>
 <meta name="twitter:image" content="{url}/og-image.jpg">""".format(
     title=SITE_TITLE, desc=SITE_DESC, url=SITE_URL, icon=FAVICON
 )
+
+# The CSS is kept out of the .format() above on purpose — it's full of braces.
+HEAD_INJECT = SITE_CSS + "\n" + META_TAGS
 
 HISTORY_SETUP = """
     %s
@@ -96,6 +172,17 @@ HISTORY_SETUP = """
     this._navPush = (st, hash) => {
       try { history.pushState(st, '', hash); } catch (err) { /* file:// */ }
     };
+    this._syncWordmark = () => {
+      const hero = document.querySelector('header[data-screen-label="Home hero"]');
+      // No hero (About / project pages) means the nav wordmark is the only one.
+      const overHero = !!hero && window.scrollY < Math.max(80, hero.offsetHeight * 0.5);
+      document.documentElement.classList.toggle('mbk-scrolled', !overHero);
+    };
+    window.addEventListener('scroll', this._syncWordmark, { passive: true });
+    // Views swap by re-render, not navigation, so poll cheaply for the hero
+    // appearing or disappearing rather than wiring into every transition.
+    this._wordmarkTimer = setInterval(this._syncWordmark, 200);
+    this._syncWordmark();
     this._onPop = (e) => { this._navApply((e && e.state) || this._navFromHash()); };
     window.addEventListener('popstate', this._onPop);
     const initialNav = this._navFromHash();
@@ -112,11 +199,19 @@ TEMPLATE_EDITS = [
     (
         "page metadata + favicon",
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        '<meta name="viewport" content="width=device-width, initial-scale=1">\n' + META_TAGS,
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n' + HEAD_INJECT,
         1,
     ),
     ("html lang", "<html><head>", '<html lang="en"><head>', 1),
     ("stray nbsp in Archive nav label", ">&nbsp;Archive<", ">Archive<", 1),
+    (
+        # A hard break mid-sentence orphaned "to last." onto its own line at
+        # every width, and looked especially broken on a phone.
+        "forced line break in hero copy",
+        "and made <br>to last.",
+        "and made to last.",
+        1,
+    ),
     (
         # The home-grid card has the real name hardcoded in the markup, but the
         # detail page reads this array — so the page headed itself "Project Title".
@@ -163,7 +258,9 @@ TEMPLATE_EDITS = [
         "history: tear down listeners",
         "    window.removeEventListener('scroll', this._onScroll);",
         "    window.removeEventListener('scroll', this._onScroll);\n"
-        "    window.removeEventListener('popstate', this._onPop);",
+        "    window.removeEventListener('popstate', this._onPop);\n"
+        "    window.removeEventListener('scroll', this._syncWordmark);\n"
+        "    clearInterval(this._wordmarkTimer);",
         1,
     ),
     (
