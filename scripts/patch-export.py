@@ -13,7 +13,11 @@ they're re-applied here on every export:
   links     both social links pointed at instagram.com / linkedin.com rather
             than her profiles, and the footer email was an address the domain
             can't receive mail on.
-  nav       the Archive nav label carried a stray leading &nbsp;.
+  slots     moving between projects (Next/Prev) blanked every gallery image:
+            the image-slot component only reads its picture on mount, so
+            reusing the elements with a new id left them empty. Remounted.
+  layout    Archive section removed; home cards go two per row; project
+            galleries stack one image per row, uncropped.
   mobile    the export is desktop-only: the nav wrapped into crowded rows and
             the hero wasted most of the first screen. Adds a mobile stylesheet.
   wordmark  "made by kas" appeared twice on the home page (nav + hero), so the
@@ -73,7 +77,37 @@ html.mbk-scrolled nav > div > a:first-child {
   nav > div > a:first-child { transition: none; }
 }
 
+/* Home project cards: two per row, so each reads as a piece of work rather
+   than a thumbnail. */
+[data-cards] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+/* Project galleries: one image per row, stacked, uncropped. The frame's fixed
+   4:3 is dropped so each image keeps its own proportions. Width is capped
+   because the sources top out near 754px — going full-bleed would only
+   enlarge them past their real resolution. Lift the cap once we have
+   high-resolution originals. */
+[data-gallery] {
+  grid-template-columns: 1fr !important;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+[data-gallery] [data-gframe] {
+  aspect-ratio: auto !important;
+  height: auto !important;
+}
+[data-gallery] [data-gframe] image-slot {
+  height: auto !important;
+  display: block;
+}
+
 @media (max-width: 760px) {
+  /* One card per row on a phone — two would be postage stamps. */
+  [data-cards] { grid-template-columns: 1fr !important; gap: 36px !important; }
+
+  /* The cap is irrelevant here; the screen is already the constraint. */
+  [data-gallery] { max-width: none; gap: 28px !important; }
+
   /* The nav wrapped onto two crowded rows and ate a third of the screen.
      Five links can't share one row at this width, so centre them and let the
      wrap read as two deliberate rows rather than a stranded Contact pill. */
@@ -159,6 +193,7 @@ HISTORY_SETUP = """
       const st = s || { view: 'home', projectId: null, section: '' };
       if (st.view === 'project') {
         this.setState({ view: 'project', projectId: st.projectId, activeSection: '', zoom: null });
+        this._scheduleRemount();
         setTimeout(() => window.scrollTo({ top: 0 }), 0);
       } else if (st.view === 'about') {
         this.setState({ view: 'about', projectId: null, activeSection: '', zoom: null });
@@ -171,6 +206,30 @@ HISTORY_SETUP = """
     };
     this._navPush = (st, hash) => {
       try { history.pushState(st, '', hash); } catch (err) { /* file:// */ }
+    };
+    // The image-slot component reads its picture only when it mounts. Moving
+    // between projects reuses the same elements and just swaps their id, so the
+    // component drops the old image and looks for a per-slot .state.json that
+    // does not exist here — every gallery image went blank. Detaching and
+    // reinserting the same node re-runs its mount and it reads the embedded
+    // image again. Reinserting the SAME node (rather than a clone) keeps
+    // React's reference to it intact.
+    this._remountSlots = () => {
+      document.querySelectorAll('image-slot').forEach((slot) => {
+        const img = slot.shadowRoot && slot.shadowRoot.querySelector('img');
+        if (img && img.naturalWidth > 0) return;
+        const parent = slot.parentNode;
+        if (!parent) return;
+        const next = slot.nextSibling;
+        parent.removeChild(slot);
+        parent.insertBefore(slot, next);
+      });
+    };
+    // Slots mount over a few frames, so sweep a few times rather than guessing
+    // one delay. Slots that are legitimately empty simply stay empty.
+    this._scheduleRemount = () => {
+      if (this._remountTimers) this._remountTimers.forEach(clearTimeout);
+      this._remountTimers = [60, 250, 700].map((d) => setTimeout(this._remountSlots, d));
     };
     this._syncWordmark = () => {
       const hero = document.querySelector('header[data-screen-label="Home hero"]');
@@ -203,7 +262,30 @@ TEMPLATE_EDITS = [
         1,
     ),
     ("html lang", "<html><head>", '<html lang="en"><head>', 1),
-    ("stray nbsp in Archive nav label", ">&nbsp;Archive<", ">Archive<", 1),
+    (
+        "home card grid -> stylesheet control",
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:56px 36px;margin-top:48px">',
+        '<div data-cards="" style="display:grid;gap:56px 36px;margin-top:48px">',
+        2,
+    ),
+    (
+        "project gallery grid -> stylesheet control",
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:44px 32px;margin-top:64px">',
+        '<div data-gallery="" style="display:grid;gap:44px 32px;margin-top:64px">',
+        1,
+    ),
+    (
+        "bigger hero headline",
+        "font-size:clamp(36px,6vw,88px);line-height:1.05",
+        "font-size:clamp(44px,8vw,116px);line-height:1.02",
+        1,
+    ),
+    (
+        "bigger hero intro copy",
+        "max-width:520px;font-size:clamp(16px,1.6vw,19px)",
+        "max-width:640px;font-size:clamp(17px,1.9vw,22px)",
+        1,
+    ),
     (
         # A hard break mid-sentence orphaned "to last." onto its own line at
         # every width, and looked especially broken on a phone.
@@ -260,7 +342,8 @@ TEMPLATE_EDITS = [
         "    window.removeEventListener('scroll', this._onScroll);\n"
         "    window.removeEventListener('popstate', this._onPop);\n"
         "    window.removeEventListener('scroll', this._syncWordmark);\n"
-        "    clearInterval(this._wordmarkTimer);",
+        "    clearInterval(this._wordmarkTimer);\n"
+        "    if (this._remountTimers) this._remountTimers.forEach(clearTimeout);",
         1,
     ),
     (
@@ -276,7 +359,8 @@ TEMPLATE_EDITS = [
         "  openProject(id) {\n    this.setState({ view: 'project', projectId: id, activeSection: '' });",
         "  openProject(id) {\n"
         "    this._navPush({ view: 'project', projectId: id, section: '' }, '#/project/' + id);\n"
-        "    this.setState({ view: 'project', projectId: id, activeSection: '' });",
+        "    this.setState({ view: 'project', projectId: id, activeSection: '' });\n"
+        "    if (this._scheduleRemount) this._scheduleRemount();",
         1,
     ),
     (
@@ -302,6 +386,12 @@ TEMPLATE_EDITS = [
 WRAPPER_EDITS = [
     ("loader metadata", "<title>Bundled Page</title>", META_TAGS, 1),
     ("loader html lang", "<html>\n<head>", '<html lang="en">\n<head>', 1),
+]
+
+# Whole blocks that go away entirely; each asserts its match count.
+TEMPLATE_CUTS = [
+    ("Archive section", re.compile(r'\n  <!-- The Archieve -->.*?\n  </section>\n', re.S), 1),
+    ("Archive nav link and hero pill", re.compile(r'<a sc-camel-on-click="\{\{goArt\}\}".*?</a>', re.S), 2),
 ]
 
 TEMPLATE_RE = re.compile(r'(<script type="__bundler/template">)(.*?)(</script>)', re.S)
@@ -333,7 +423,17 @@ def main():
     if not m:
         sys.exit("error: no __bundler/template script found — is this a bundle export?")
 
-    template = apply_edits(json.loads(m.group(2)), TEMPLATE_EDITS, "template")
+    template = json.loads(m.group(2))
+    for desc, rx, expected in TEMPLATE_CUTS:
+        found = len(rx.findall(template))
+        if found != expected:
+            sys.exit(
+                "error: [cut] %s matched %d times, expected %d.\n"
+                "The export's structure changed — update scripts/patch-export.py."
+                % (desc, found, expected)
+            )
+        template = rx.sub("", template)
+    template = apply_edits(template, TEMPLATE_EDITS, "template")
     # The template embeds its own <script> tags, so "</" must stay escaped or
     # the outer script tag closes early — the bundler writes it as </.
     encoded = json.dumps(template).replace("</", "<\\u002F")
