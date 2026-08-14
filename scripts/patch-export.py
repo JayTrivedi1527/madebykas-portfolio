@@ -112,10 +112,20 @@ html.mbk-scrolled nav > div > a:first-child {
   margin-right: auto !important;
 }
 
-/* Project galleries: one image per row, full width of the page. */
+/* Project galleries: one image per row, and — like the hero — each image
+   sits within a single screen, so a tall shot never has to be scrolled
+   through to be seen whole. Width follows from the ratio, centred. */
 [data-gallery] {
   grid-template-columns: 1fr !important;
   max-width: none;
+}
+[data-gallery] image-slot {
+  max-height: calc(100svh - 90px) !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  display: block;
 }
 
 /* The lightbox is gone, so stop advertising it. */
@@ -202,7 +212,7 @@ META_TAGS = """<title>{title}</title>
 HEAD_INJECT = SITE_CSS + "\n" + META_TAGS
 
 HISTORY_SETUP = """
-    %s
+    __MARK__
     this._navFromHash = () => {
       const h = (location.hash || '').replace(/^#\\/?/, '');
       if (!h) return { view: 'home', projectId: null, section: '' };
@@ -285,6 +295,25 @@ HISTORY_SETUP = """
     // The hero should be fully visible on the first screen. How much room it
     // has depends on the nav and the "Back to work" link above it, which vary
     // by viewport, so measure the gap instead of assuming a fixed offset.
+    // Beyond the frame ratio, every slot also carries a saved zoom/pan from
+    // the editor: it sizes the <img> larger than the frame and offsets it, so
+    // a product could be cropped to a corner of itself. The slot's shadow DOM
+    // is open, so a stylesheet injected into it pins the image back to the
+    // frame. !important beats the component's inline styles, so this survives
+    // it re-applying the view on every render.
+    this._resetViews = () => {
+      document.querySelectorAll('[data-gframe] image-slot, [data-hero-frame] image-slot').forEach((slot) => {
+        const root = slot.shadowRoot;
+        if (!root || root.querySelector('style[data-mbk-fit]')) return;
+        const style = document.createElement('style');
+        style.setAttribute('data-mbk-fit', '');
+        style.textContent =
+          '.frame img{position:absolute!important;left:0!important;top:0!important;' +
+          'right:0!important;bottom:0!important;width:100%!important;height:100%!important;' +
+          'transform:none!important;object-fit:contain!important;object-position:center!important;}';
+        root.appendChild(style);
+      });
+    };
     this._fitHero = () => {
       const slot = document.querySelector('[data-hero-frame] image-slot');
       if (!slot) return;
@@ -295,7 +324,8 @@ HISTORY_SETUP = """
         slot.style.setProperty('max-height', px, 'important');
       }
     };
-    this._fitTimer = setInterval(() => { this._fitRatios(); this._fitHero(); }, 120);
+    this._fitTimer = setInterval(() => { this._resetViews(); this._fitRatios(); this._fitHero(); }, 120);
+    this._resetViews();
     this._fitRatios();
     this._fitHero();
     this._syncWordmark = () => {
@@ -318,7 +348,7 @@ HISTORY_SETUP = """
     if (initialNav.view !== 'home' || initialNav.section) {
       setTimeout(() => this._navApply(initialNav), 60);
     }
-""" % MARK
+""".replace("__MARK__", MARK)
 
 # (description, old, new, expected occurrences) applied to the template.
 TEMPLATE_EDITS = [
