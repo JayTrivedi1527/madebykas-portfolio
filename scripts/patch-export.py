@@ -81,9 +81,14 @@ html.mbk-scrolled nav > div > a:first-child {
    than a thumbnail. */
 [data-cards] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 
-/* Project hero: edge to edge, at the image's own proportions so nothing is
-   cropped and no letterbox bars appear. */
+/* Project hero: the whole image visible on the first screen, without
+   scrolling. Bounded by viewport HEIGHT rather than width — going full-bleed
+   made tall images taller than the screen. The slot keeps the image's own
+   ratio (set at runtime), so constraining height lets width follow, and
+   nothing is cropped. svh, not vh, so mobile browser chrome is excluded. */
 [data-hero-frame] {
+  display: flex !important;
+  justify-content: center !important;
   width: 100vw !important;
   max-width: 100vw !important;
   margin-left: calc(50% - 50vw) !important;
@@ -92,22 +97,26 @@ html.mbk-scrolled nav > div > a:first-child {
   height: auto !important;
   max-height: none !important;
   border-radius: 0 !important;
+  background: transparent !important;
 }
-[data-hero-frame] image-slot { height: auto !important; display: block; }
+[data-hero-frame] > * { width: 100% !important; }
+[data-hero-frame] image-slot {
+  /* Fallback cap; the exact room available is measured at runtime. */
+  max-height: calc(100svh - 150px) !important;
+  width: auto !important;
+  max-width: 100vw !important;
+  display: block;
+  /* The slot sits inside a wrapper div, so centre it directly rather than
+     relying on the frame's flex alignment. */
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
 
 /* Project galleries: one image per row, full width of the page. */
 [data-gallery] {
   grid-template-columns: 1fr !important;
   max-width: none;
 }
-
-/* Nothing is cropped anywhere: every frame takes its image's own ratio
-   instead of a fixed 4:3, so "cover" has nothing left to cut off. */
-[data-cards] > div > div > div {
-  aspect-ratio: auto !important;
-  height: auto !important;
-}
-[data-cards] image-slot { height: auto !important; display: block; }
 
 /* The lightbox is gone, so stop advertising it. */
 [data-gframe], [data-hero-frame] { cursor: default !important; }
@@ -249,14 +258,16 @@ HISTORY_SETUP = """
       if (this._remountTimers) this._remountTimers.forEach(clearTimeout);
       this._remountTimers = [60, 250, 700].map((d) => setTimeout(this._remountSlots, d));
     };
-    // Each image-slot carries an aspect ratio chosen in the editor (3/2, 4/3,
-    // 16/9) and crops the photo to fit it. The image's real proportions are
+    // Project pages only. Each image-slot carries an aspect ratio chosen in
+    // the editor (3/2, 4/3, 16/9) and crops the photo to fit it. Home cards
+    // keep that uniform frame on purpose, so the grid stays aligned; inside a
+    // project the images should be whole. The real proportions are
     // only knowable once it has decoded, so match the slot to the image at
     // runtime — then "cover" has nothing left to crop and no letterbox bars
     // appear. Cheap enough to re-assert every frame, which also survives the
     // component rewriting its own style on re-render.
     this._fitRatios = () => {
-      document.querySelectorAll('image-slot').forEach((slot) => {
+      document.querySelectorAll('[data-gframe] image-slot, [data-hero-frame] image-slot').forEach((slot) => {
         const img = slot.shadowRoot && slot.shadowRoot.querySelector('img');
         if (!img || !img.naturalWidth || !img.naturalHeight) return;
         const ratio = img.naturalWidth + ' / ' + img.naturalHeight;
@@ -271,8 +282,22 @@ HISTORY_SETUP = """
     // An interval rather than requestAnimationFrame: rAF is suspended while
     // the tab is in the background, which would leave ratios unapplied on a
     // restored tab.
-    this._fitTimer = setInterval(this._fitRatios, 120);
+    // The hero should be fully visible on the first screen. How much room it
+    // has depends on the nav and the "Back to work" link above it, which vary
+    // by viewport, so measure the gap instead of assuming a fixed offset.
+    this._fitHero = () => {
+      const slot = document.querySelector('[data-hero-frame] image-slot');
+      if (!slot) return;
+      const top = slot.getBoundingClientRect().top + window.scrollY;
+      const room = Math.max(260, window.innerHeight - top - 24);
+      const px = Math.round(room) + 'px';
+      if (slot.style.getPropertyValue('max-height') !== px) {
+        slot.style.setProperty('max-height', px, 'important');
+      }
+    };
+    this._fitTimer = setInterval(() => { this._fitRatios(); this._fitHero(); }, 120);
     this._fitRatios();
+    this._fitHero();
     this._syncWordmark = () => {
       const hero = document.querySelector('header[data-screen-label="Home hero"]');
       // No hero (About / project pages) means the nav wordmark is the only one.
