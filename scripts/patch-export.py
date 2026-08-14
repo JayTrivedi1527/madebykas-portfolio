@@ -126,6 +126,14 @@ TEMPLATE_EDITS = [
         1,
     ),
     (
+        # Same array-vs-markup split: the card reads "Lil Sprouts Lab" while the
+        # detail page and the prev/next links read "Lil sprouts lab".
+        "project title casing (Lil Sprouts Lab)",
+        "{ id: 'arc-lamp', title: 'Lil sprouts lab'",
+        "{ id: 'arc-lamp', title: 'Lil Sprouts Lab'",
+        1,
+    ),
+    (
         "footer email (domain has no mail server)",
         "mailto:hello@madebykas.com",
         "mailto:kasshirawat@gmail.com",
