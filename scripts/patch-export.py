@@ -81,17 +81,36 @@ html.mbk-scrolled nav > div > a:first-child {
    than a thumbnail. */
 [data-cards] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 
-/* Project galleries: one image per row, stacked, uncropped. The frame's fixed
-   4:3 is dropped so each image keeps its own proportions. Width is capped
-   because the sources top out near 754px — going full-bleed would only
-   enlarge them past their real resolution. Lift the cap once we have
-   high-resolution originals. */
+/* Project hero: edge to edge, at the image's own proportions so nothing is
+   cropped and no letterbox bars appear. */
+[data-hero-frame] {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin-left: calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
+  aspect-ratio: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+}
+[data-hero-frame] image-slot { height: auto !important; display: block; }
+
+/* Project galleries: one image per row, full width of the page. */
 [data-gallery] {
   grid-template-columns: 1fr !important;
-  max-width: 900px;
-  margin-left: auto;
-  margin-right: auto;
+  max-width: none;
 }
+
+/* Nothing is cropped anywhere: every frame takes its image's own ratio
+   instead of a fixed 4:3, so "cover" has nothing left to cut off. */
+[data-cards] > div > div > div {
+  aspect-ratio: auto !important;
+  height: auto !important;
+}
+[data-cards] image-slot { height: auto !important; display: block; }
+
+/* The lightbox is gone, so stop advertising it. */
+[data-gframe], [data-hero-frame] { cursor: default !important; }
 [data-gallery] [data-gframe] {
   aspect-ratio: auto !important;
   height: auto !important;
@@ -105,8 +124,7 @@ html.mbk-scrolled nav > div > a:first-child {
   /* One card per row on a phone — two would be postage stamps. */
   [data-cards] { grid-template-columns: 1fr !important; gap: 36px !important; }
 
-  /* The cap is irrelevant here; the screen is already the constraint. */
-  [data-gallery] { max-width: none; gap: 28px !important; }
+  [data-gallery] { gap: 28px !important; }
 
   /* The nav wrapped onto two crowded rows and ate a third of the screen.
      Five links can't share one row at this width, so centre them and let the
@@ -231,6 +249,30 @@ HISTORY_SETUP = """
       if (this._remountTimers) this._remountTimers.forEach(clearTimeout);
       this._remountTimers = [60, 250, 700].map((d) => setTimeout(this._remountSlots, d));
     };
+    // Each image-slot carries an aspect ratio chosen in the editor (3/2, 4/3,
+    // 16/9) and crops the photo to fit it. The image's real proportions are
+    // only knowable once it has decoded, so match the slot to the image at
+    // runtime — then "cover" has nothing left to crop and no letterbox bars
+    // appear. Cheap enough to re-assert every frame, which also survives the
+    // component rewriting its own style on re-render.
+    this._fitRatios = () => {
+      document.querySelectorAll('image-slot').forEach((slot) => {
+        const img = slot.shadowRoot && slot.shadowRoot.querySelector('img');
+        if (!img || !img.naturalWidth || !img.naturalHeight) return;
+        const ratio = img.naturalWidth + ' / ' + img.naturalHeight;
+        if (slot.style.getPropertyValue('aspect-ratio') !== ratio) {
+          slot.style.setProperty('aspect-ratio', ratio, 'important');
+        }
+        if (slot.style.getPropertyValue('height') !== 'auto') {
+          slot.style.setProperty('height', 'auto', 'important');
+        }
+      });
+    };
+    // An interval rather than requestAnimationFrame: rAF is suspended while
+    // the tab is in the background, which would leave ratios unapplied on a
+    // restored tab.
+    this._fitTimer = setInterval(this._fitRatios, 120);
+    this._fitRatios();
     this._syncWordmark = () => {
       const hero = document.querySelector('header[data-screen-label="Home hero"]');
       // No hero (About / project pages) means the nav wordmark is the only one.
@@ -262,6 +304,13 @@ TEMPLATE_EDITS = [
         1,
     ),
     ("html lang", "<html><head>", '<html lang="en"><head>', 1),
+    (
+        # Images are shown large inline now, so the lightbox has no purpose.
+        "remove click-to-zoom",
+        "  onDocClick(e) {\n    const path = e.composedPath ? e.composedPath() : [];",
+        "  onDocClick(e) {\n    return; /* zoom removed: images are shown large inline */\n    const path = e.composedPath ? e.composedPath() : [];",
+        1,
+    ),
     (
         "home card grid -> stylesheet control",
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:56px 36px;margin-top:48px">',
@@ -343,7 +392,8 @@ TEMPLATE_EDITS = [
         "    window.removeEventListener('popstate', this._onPop);\n"
         "    window.removeEventListener('scroll', this._syncWordmark);\n"
         "    clearInterval(this._wordmarkTimer);\n"
-        "    if (this._remountTimers) this._remountTimers.forEach(clearTimeout);",
+        "    if (this._remountTimers) this._remountTimers.forEach(clearTimeout);\n"
+        "    clearInterval(this._fitTimer);",
         1,
     ),
     (
